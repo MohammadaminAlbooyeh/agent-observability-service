@@ -15,20 +15,36 @@ const PRIORITIES = [
 
 const CATEGORIES = ['Personal', 'Work', 'Shopping', 'Health', 'Finance'];
 
-export default function TaskItem({ item, onToggle, onDelete, onUpdate }) {
+export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive }) {
   const [isHovering, setIsHovering] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title);
   const [editPriority, setEditPriority] = useState(item.priority);
   const [editCategory, setEditCategory] = useState(item.category || 'Personal');
+  const [editDueDate, setEditDueDate] = useState(item.due_date || '');
   const priorityColor = PRIORITY_COLORS[item.priority] || '#f59e0b';
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const isOverdue = (dateStr) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+  };
 
   const handleSaveEdit = () => {
     if (!editTitle.trim()) return;
     onUpdate(item.id, {
       title: editTitle.trim(),
       priority: editPriority,
-      category: editCategory
+      category: editCategory,
+      due_date: editDueDate || null
     });
     setIsEditing(false);
   };
@@ -37,7 +53,13 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate }) {
     setEditTitle(item.title);
     setEditPriority(item.priority);
     setEditCategory(item.category || 'Personal');
+    setEditDueDate(item.due_date || '');
     setIsEditing(false);
+  };
+
+  const handleArchive = (e) => {
+    e.stopPropagation();
+    if (onArchive) onArchive(item.id);
   };
 
   if (isEditing) {
@@ -76,6 +98,15 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate }) {
                 <span className={`pill-text ${editCategory === cat ? 'pill-text-active' : ''}`}>{cat}</span>
               </button>
             ))}
+          </div>
+          <div className="edit-date-row">
+            <label className="edit-date-label">Due Date</label>
+            <input
+              type="date"
+              className="edit-date-input"
+              value={editDueDate}
+              onChange={(e) => setEditDueDate(e.target.value)}
+            />
           </div>
           <div className="edit-actions">
             <button
@@ -130,6 +161,14 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate }) {
                 <span className="category-text">{item.category}</span>
               </div>
             )}
+            {item.due_date && (
+              <div className={`due-tag ${isOverdue(item.due_date) && !item.done ? 'due-overdue' : ''}`}>
+                <span className="due-text">
+                  {isOverdue(item.due_date) && !item.done ? '⚠ ' : '📅 '}
+                  {formatDate(item.due_date)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </button>
@@ -141,6 +180,13 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate }) {
           title="Edit task"
         >
           ✎
+        </button>
+        <button
+          className="archive-btn"
+          onClick={handleArchive}
+          title="Archive task"
+        >
+          📦
         </button>
         <button
           className="delete-btn"

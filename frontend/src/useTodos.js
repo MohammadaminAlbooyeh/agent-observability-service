@@ -9,6 +9,7 @@ const api = axios.create({
 
 export default function useTodos() {
   const [todos, setTodos] = useState([]);
+  const [archivedTodos, setArchivedTodos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
@@ -26,6 +27,15 @@ export default function useTodos() {
     }
   }, []);
 
+  const fetchArchived = useCallback(async () => {
+    try {
+      const { data } = await api.get('/todos', { params: { archived: true } });
+      setArchivedTodos(data);
+    } catch (err) {
+      console.error('Failed to fetch archived');
+    }
+  }, []);
+
   const fetchStats = useCallback(async () => {
     try {
       const { data } = await api.get('/stats');
@@ -37,8 +47,9 @@ export default function useTodos() {
 
   useEffect(() => {
     fetch();
+    fetchArchived();
     fetchStats();
-  }, [fetch, fetchStats]);
+  }, [fetch, fetchArchived, fetchStats]);
 
   const add = useCallback(async (title, priority = 'medium', dueDate = null, category = 'Personal') => {
     const trimmed = title.trim();
@@ -83,8 +94,36 @@ export default function useTodos() {
     }
   }, [todos, fetchStats]);
 
+  const archive = useCallback(async (id) => {
+    const prev = [...todos];
+    setTodos(prev => prev.filter(t => t.id !== id));
+    try {
+      await api.put(`/todos/${id}`, { archived: true });
+      fetchArchived();
+      fetchStats();
+      setError(null);
+    } catch (err) {
+      setTodos(prev);
+      setError('Failed to archive');
+    }
+  }, [todos, fetchArchived, fetchStats]);
+
+  const restore = useCallback(async (id) => {
+    const prev = [...archivedTodos];
+    setArchivedTodos(prev => prev.filter(t => t.id !== id));
+    try {
+      await api.put(`/todos/${id}`, { archived: false });
+      fetch();
+      fetchStats();
+      setError(null);
+    } catch (err) {
+      setArchivedTodos(prev);
+      setError('Failed to restore');
+    }
+  }, [archivedTodos, fetch, fetchStats]);
+
   const incomplete = Array.isArray(todos) ? todos.filter(t => !t.done) : [];
   const completed = Array.isArray(todos) ? todos.filter(t => t.done) : [];
 
-  return { todos, incomplete, completed, loading, error, stats, fetch, add, toggle, update, remove };
+  return { todos, archivedTodos, incomplete, completed, loading, error, stats, fetch, add, toggle, update, remove, archive, restore };
 }

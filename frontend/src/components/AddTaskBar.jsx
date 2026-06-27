@@ -12,6 +12,7 @@ const CATEGORIES = ['Personal', 'Work', 'Shopping', 'Health', 'Finance'];
 export default function AddTaskBar({ value, onChange, onSubmit }) {
   const [priority, setPriority] = useState(null);
   const [category, setCategory] = useState('Personal');
+  const [dueDate, setDueDate] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -30,9 +31,10 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
       showErrorNotification('Please select a priority (Low, Medium, or High)');
       return;
     }
-    onSubmit(priority, null, category);
+    onSubmit(priority, dueDate || null, category);
     setPriority(null);
     setCategory('Personal');
+    setDueDate('');
     setIsFocused(false);
   };
 
@@ -99,6 +101,15 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
 
       {isFocused && (
         <div className="options">
+          <div className="option-section">
+            <label className="option-label">Due Date</label>
+            <input
+              type="date"
+              className="date-input"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
           <div className="option-section">
             <label className="option-label">Category</label>
             <div className="pill-row">

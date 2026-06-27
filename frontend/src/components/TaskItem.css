@@ -126,6 +126,26 @@
   font-weight: 600;
 }
 
+.due-tag {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.due-overdue {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+.due-text {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+}
+
+.due-overdue .due-text {
+  color: #ef4444;
+}
+
 .delete-btn {
   background-color: transparent;
   border: none;
@@ -148,6 +168,29 @@
 
 .delete-btn:hover {
   background-color: #dc2626;
+  transform: scale(1.05);
+}
+
+.archive-btn {
+  background-color: transparent;
+  border: none;
+  color: rgba(124, 58, 237, 0.5);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 8px 11px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+}
+
+.task-item:hover .archive-btn {
+  background-color: #7c3aed;
+  color: #fff;
+  opacity: 1;
+}
+
+.archive-btn:hover {
+  background-color: #6d28d9;
   transform: scale(1.05);
 }
 
@@ -300,4 +343,42 @@
 .pill-category-active {
   background-color: rgba(255, 255, 255, 0.15);
   color: #f1f1f7;
+}
+
+.edit-date-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edit-date-input {
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #f1f1f7;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+  color-scheme: dark;
+  flex: 1;
+}
+
+.edit-date-input:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.edit-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
 }
