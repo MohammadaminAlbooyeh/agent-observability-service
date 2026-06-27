@@ -137,8 +137,16 @@ function App() {
           </div>
         </div>
 
+        {loading && (
+          <div className="loading-wrap">
+            <div className="spinner" />
+            <span className="loading-text">Loading tasks...</span>
+          </div>
+        )}
+
         {error && <div className="error"><span>{error}</span></div>}
 
+        {!loading && (
         <div className="tasks-list">
           {showArchived ? (
             <>
@@ -208,6 +216,7 @@ function App() {
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );

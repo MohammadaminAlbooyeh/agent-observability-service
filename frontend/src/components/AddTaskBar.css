@@ -196,6 +196,27 @@
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.tag-input {
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #f1f1f7;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.tag-input:focus {
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tag-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
 .date-input::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;

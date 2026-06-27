@@ -22,6 +22,7 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive
   const [editPriority, setEditPriority] = useState(item.priority);
   const [editCategory, setEditCategory] = useState(item.category || 'Personal');
   const [editDueDate, setEditDueDate] = useState(item.due_date || '');
+  const [editTags, setEditTags] = useState(item.tags || '');
   const priorityColor = PRIORITY_COLORS[item.priority] || '#f59e0b';
 
   const formatDate = (dateStr) => {
@@ -40,11 +41,13 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive
 
   const handleSaveEdit = () => {
     if (!editTitle.trim()) return;
+    const tagsStr = editTags.trim() ? editTags.split(',').map(t => t.trim()).filter(Boolean).join(',') : null;
     onUpdate(item.id, {
       title: editTitle.trim(),
       priority: editPriority,
       category: editCategory,
-      due_date: editDueDate || null
+      due_date: editDueDate || null,
+      tags: tagsStr
     });
     setIsEditing(false);
   };
@@ -54,6 +57,7 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive
     setEditPriority(item.priority);
     setEditCategory(item.category || 'Personal');
     setEditDueDate(item.due_date || '');
+    setEditTags(item.tags || '');
     setIsEditing(false);
   };
 
@@ -106,6 +110,16 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive
               className="edit-date-input"
               value={editDueDate}
               onChange={(e) => setEditDueDate(e.target.value)}
+            />
+          </div>
+          <div className="edit-date-row">
+            <label className="edit-date-label">Tags</label>
+            <input
+              type="text"
+              className="edit-date-input"
+              placeholder="comma-separated"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
             />
           </div>
           <div className="edit-actions">
@@ -167,6 +181,13 @@ export default function TaskItem({ item, onToggle, onDelete, onUpdate, onArchive
                   {isOverdue(item.due_date) && !item.done ? '⚠ ' : '📅 '}
                   {formatDate(item.due_date)}
                 </span>
+              </div>
+            )}
+            {item.tags && (
+              <div className="tags-row">
+                {item.tags.split(',').map((tag, i) => (
+                  <span key={i} className="tag-badge">{tag.trim()}</span>
+                ))}
               </div>
             )}
           </div>

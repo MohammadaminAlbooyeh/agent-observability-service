@@ -13,6 +13,7 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
   const [priority, setPriority] = useState(null);
   const [category, setCategory] = useState('Personal');
   const [dueDate, setDueDate] = useState('');
+  const [tags, setTags] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -31,10 +32,12 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
       showErrorNotification('Please select a priority (Low, Medium, or High)');
       return;
     }
-    onSubmit(priority, dueDate || null, category);
+    const tagsStr = tags.trim() ? tags.split(',').map(t => t.trim()).filter(Boolean).join(',') : null;
+    onSubmit(priority, dueDate || null, category, tagsStr);
     setPriority(null);
     setCategory('Personal');
     setDueDate('');
+    setTags('');
     setIsFocused(false);
   };
 
@@ -108,6 +111,16 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
               className="date-input"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+          <div className="option-section">
+            <label className="option-label">Tags</label>
+            <input
+              type="text"
+              className="tag-input"
+              placeholder="comma-separated tags"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
             />
           </div>
           <div className="option-section">

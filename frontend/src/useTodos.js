@@ -51,11 +51,11 @@ export default function useTodos() {
     fetchStats();
   }, [fetch, fetchArchived, fetchStats]);
 
-  const add = useCallback(async (title, priority = 'medium', dueDate = null, category = 'Personal') => {
+  const add = useCallback(async (title, priority = 'medium', dueDate = null, category = 'Personal', tags = null) => {
     const trimmed = title.trim();
     if (!trimmed) return;
     try {
-      const { data } = await api.post('/todos', { title: trimmed, priority, due_date: dueDate, category });
+      const { data } = await api.post('/todos', { title: trimmed, priority, due_date: dueDate, category, tags });
       setTodos(prev => [...prev, data]);
       fetchStats();
       setError(null);

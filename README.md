@@ -1,35 +1,39 @@
-# To-Do List Application
+# doflow — To-Do List Application
 
-This is a full-stack To-Do List application built with a React frontend and a Flask backend, containerized using Docker and orchestrated with Docker Compose.
+A full-stack to-do list app built with a **React + Vite** frontend and a **FastAPI** backend, containerized with Docker Compose.
 
 ## Features
-- Add, edit, and delete to-do items
-- Persistent storage using SQLite
-- RESTful API backend
-- Responsive React UI
-- Easy deployment with Docker
+- Create, edit, delete, and toggle to-do items
+- Archive/restore tasks
+- Priority levels (Low / Medium / High)
+- Category filtering (Personal, Work, Shopping, Health, Finance)
+- Due dates with overdue indicators
+- Search by title
+- Stats dashboard (pending, completed, per-category counts)
+- Animated progress bar
+- Dark theme UI
+- Docker deployment with nginx reverse proxy
 
 ## Project Structure
 
 ```
 to_do_list/
 ├── backend/
-│   ├── app.py           # Flask API server
+│   ├── app.py           # FastAPI server
 │   ├── Dockerfile       # Backend Docker image
 │   ├── requirements.txt # Backend Python dependencies
-│   └── todo.db          # SQLite database
+│   └── data/
+│       └── todo.db      # SQLite database
 ├── frontend/
-│   ├── App.js           # Main React component
-│   ├── Dockerfile       # Frontend Docker image
-│   ├── index.js         # React entry point
+│   ├── App.jsx          # Main React component
+│   ├── Dockerfile       # Frontend multi-stage Docker image
 │   ├── package.json     # Frontend dependencies
-│   ├── public/
-│   │   └── index.html   # HTML template
+│   ├── vite.config.js   # Vite configuration
+│   ├── nginx.conf       # Nginx config for production
 │   └── src/
-│       ├── App.js       # React app logic
-│       └── index.js     # React app entry
+│       ├── components/  # React components
+│       └── useTodos.js  # Custom hook for API calls
 ├── docker-compose.yml   # Multi-container orchestration
-├── requirements.txt     # (Optional) root dependencies
 └── README.md            # Project documentation
 ```
 
@@ -40,7 +44,7 @@ to_do_list/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/MohammadaminAlbooyeh/to_do_list.git
+   git clone <repo-url>
    cd to_do_list
    ```
 
@@ -50,30 +54,32 @@ to_do_list/
    ```
 
 3. **Access the app:**
-   - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Backend API: [http://localhost:5000](http://localhost:5000)
+   - Frontend: [http://localhost:8080](http://localhost:8080)
+   - Backend API: [http://localhost:5050](http://localhost:5050)
 
 ## Development
 
-### Backend (Flask)
+### Backend (FastAPI)
 ```
 cd backend
 pip install -r requirements.txt
-python app.py
+uvicorn app:app --reload --port 5050
 ```
 
-### Frontend (React)
+### Frontend (Vite + React)
 ```
 cd frontend
 npm install
-npm start
+npm run dev
 ```
+Frontend runs on [http://localhost:5173](http://localhost:5173), proxies `/api` to the backend.
 
 ## API Endpoints
-- `GET /todos` - List all to-dos
-- `POST /todos` - Add a new to-do
-- `PUT /todos/<id>` - Update a to-do
-- `DELETE /todos/<id>` - Delete a to-do
+- `GET /todos` — List active to-dos (`?archived=true` for archived)
+- `GET /stats` — Stats (total, completed, pending, per-category)
+- `POST /todos` — Create a new to-do
+- `PUT /todos/<id>` — Update a to-do
+- `DELETE /todos/<id>` — Delete a to-do
 
 ## License
 MIT
