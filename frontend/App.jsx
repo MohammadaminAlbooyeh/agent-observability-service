@@ -6,12 +6,19 @@ import './App.css';
 
 const CATEGORIES = ['All', 'Personal', 'Work', 'Shopping', 'Health', 'Finance'];
 
+const NAV_ITEMS = [
+  { key: 'all', label: 'All Tasks' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'archived', label: 'Archived' },
+];
+
 function App() {
-  const { incomplete, completed, archivedTodos, loading, error, stats, fetch, add, toggle, remove, update, archive, restore } = useTodos();
+  const { incomplete, completed, archivedTodos, loading, error, stats, add, toggle, remove, update, archive, restore } = useTodos();
   const [newTitle, setNewTitle] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [showArchived, setShowArchived] = useState(false);
+  const [currentView, setCurrentView] = useState('all');
 
   const total = incomplete.length + completed.length;
   const progress = total > 0 ? completed.length / total : 0;
@@ -19,22 +26,6 @@ function App() {
   const handleAdd = (priority, dueDate, category) => {
     add(newTitle, priority, dueDate, category);
     setNewTitle('');
-  };
-
-  const handleDelete = (id) => {
-    if (window.confirm('Delete this task?')) remove(id);
-  };
-
-  const handleUpdate = (id, updateData) => {
-    update(id, updateData);
-  };
-
-  const handleArchive = (id) => {
-    if (window.confirm('Archive this task?')) archive(id);
-  };
-
-  const handleRestore = (id) => {
-    restore(id);
   };
 
   const filteredIncomplete = useMemo(() => {
@@ -58,165 +49,178 @@ function App() {
     );
   }, [archivedTodos, searchQuery, selectedCategory]);
 
+  const showArchived = currentView === 'archived';
+  const showCompleted = currentView === 'completed' || currentView === 'all';
+  const showActive = currentView === 'active' || currentView === 'all';
+
   return (
-    <div className="container">
-      <div className="header">
-        <div className="brand-row">
-          <div className="logo">◆</div>
-          <div>
-            <div className="brand-name">doflow</div>
-            <div className="stats-subtitle">
-              {stats ? (stats.completed + '/' + stats.total + ' tasks finished') : 'Loading...'}
-            </div>
-          </div>
+    <div className="app-layout">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">EC</div>
+          <span className="sidebar-brand-text">Evreghen</span>
         </div>
-
-        <div className="progress-container">
-          <div className="progress-track">
-            <div className="progress-bar" style={{ width: (progress * 100) + '%' }}>
-              <div className="progress-glow" />
-            </div>
-          </div>
-          <div className="progress-percent">{Math.round(progress * 100)}%</div>
-        </div>
-      </div>
-
-      {stats && (
-        <div className="stats-scroll">
-          <div className="stat-card">
-            <div className="stat-val">{stats.pending}</div>
-            <div className="stat-label">Pending</div>
-          </div>
-          <div className="stat-card stat-completed">
-            <div className="stat-val" style={{ color: '#22c55e' }}>{stats.completed}</div>
-            <div className="stat-label">Completed</div>
-          </div>
-          {Object.entries(stats.categories || {}).map(([cat, count]) => (
-            <div key={cat} className="stat-card">
-              <div className="stat-val">{count}</div>
-              <div className="stat-label">{cat}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="body">
-        <AddTaskBar value={newTitle} onChange={setNewTitle} onSubmit={handleAdd} />
-
-        <div className="filter-section">
-          <div className="search-box">
-            <span className="search-icon">🔍</span>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="cat-scroll">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                className={`cat-pill ${selectedCategory === cat ? 'cat-pill-active' : ''}`}
-                onClick={() => setSelectedCategory(cat)}
-              >
-                <span className={selectedCategory === cat ? 'cat-pill-text-active' : 'cat-pill-text'}>
-                  {cat}
-                </span>
-              </button>
-            ))}
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map(item => (
             <button
-              className={`cat-pill archive-toggle ${showArchived ? 'cat-pill-active' : ''}`}
-              onClick={() => setShowArchived(v => !v)}
+              key={item.key}
+              className={`nav-item ${currentView === item.key ? 'nav-item-active' : ''}`}
+              onClick={() => setCurrentView(item.key)}
             >
-              <span className={showArchived ? 'cat-pill-text-active' : 'cat-pill-text'}>
-                📦 Archived ({archivedTodos.length})
+              {item.label}
+              <span className="nav-count">
+                {item.key === 'all' ? total :
+                 item.key === 'active' ? incomplete.length :
+                 item.key === 'completed' ? completed.length :
+                 archivedTodos.length}
               </span>
             </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <button className="nav-item" onClick={() => setSelectedCategory('All')}>
+            Categories
+          </button>
+        </div>
+      </aside>
+
+      <div className="main-area">
+        <div className="main-header">
+          <div className="main-header-top">
+            <div>
+              <div className="main-greeting">Tasks</div>
+              <div className="main-greeting-sub">
+                {stats ? `${stats.completed} of ${stats.total} complete` : 'Loading...'}
+              </div>
+            </div>
+            <div className="main-header-right">
+              <div className="stat-item">
+                <span className="stat-number">{stats?.pending ?? 0}</span>
+                <span className="stat-label">Pending</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number stat-number-primary">{stats?.completed ?? 0}</span>
+                <span className="stat-label">Done</span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-number">{total}</span>
+                <span className="stat-label">Total</span>
+              </div>
+            </div>
+          </div>
+          <div className="progress-section">
+            <div className="progress-header">
+              <span className="progress-label">Progress</span>
+              <span className="progress-pct">{Math.round(progress * 100)}%</span>
+            </div>
+            <div className="progress-track">
+              <div className="progress-bar" style={{ width: `${progress * 100}%` }} />
+            </div>
           </div>
         </div>
 
-        {loading && (
-          <div className="loading-wrap">
-            <div className="spinner" />
-            <span className="loading-text">Loading tasks...</span>
+        <div className="main-body">
+          <AddTaskBar value={newTitle} onChange={setNewTitle} onSubmit={handleAdd} />
+
+          <div className="filter-section">
+            <div className="search-box">
+              <span className="search-icon">/</span>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="filter-cats">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  className={`filter-cat-btn ${selectedCategory === cat ? 'filter-cat-active' : ''}`}
+                  onClick={() => setSelectedCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
 
-        {error && <div className="error"><span>{error}</span></div>}
+          {loading && (
+            <div className="loading-wrap">
+              <div className="spinner" />
+              <span className="loading-text">Loading tasks...</span>
+            </div>
+          )}
 
-        {!loading && (
-        <div className="tasks-list">
-          {showArchived ? (
+          {error && <div className="error"><span>{error}</span></div>}
+
+          {!loading && (
             <>
-              {filteredArchived.length > 0 && (
-                <div>
-                  <div className="section-header">
-                    <span className="section-title">Archived</span>
-                    <div className="badge" style={{ backgroundColor: 'rgba(124, 58, 237, 0.1)' }}>
-                      <span className="badge-text" style={{ color: '#7c3aed' }}>{filteredArchived.length}</span>
+              {showArchived ? (
+                <div className="task-list">
+                  {filteredArchived.length > 0 && (
+                    <>
+                      <div className="section-header">
+                        <span className="section-title">Archived</span>
+                        <span className="section-count">{filteredArchived.length}</span>
+                      </div>
+                      {filteredArchived.map(item => (
+                        <TaskItem
+                          key={item.id}
+                          item={item}
+                          onToggle={() => {}}
+                          onDelete={() => {}}
+                          onUpdate={() => {}}
+                          onArchive={() => restore(item.id)}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {filteredArchived.length === 0 && (
+                    <div className="empty">
+                      <div className="empty-icon">~</div>
+                      <span className="empty-text">{searchQuery || selectedCategory !== 'All' ? 'No results' : 'No archived tasks'}</span>
                     </div>
-                  </div>
-                  {filteredArchived.map(item => (
-                    <TaskItem
-                      key={item.id}
-                      item={item}
-                      onToggle={toggle}
-                      onDelete={handleDelete}
-                      onUpdate={handleUpdate}
-                      onArchive={handleRestore}
-                    />
-                  ))}
+                  )}
                 </div>
-              )}
-              {filteredArchived.length === 0 && (
-                <div className="empty">
-                  <div className="empty-icon">📦</div>
-                  <span className="empty-text">{searchQuery || selectedCategory !== 'All' ? 'No results found' : 'No archived tasks'}</span>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {filteredIncomplete.length > 0 && (
-                <div>
-                  <div className="section-header">
-                    <span className="section-title">Active</span>
-                    <div className="badge" style={{ backgroundColor: 'rgba(124, 58, 237, 0.1)' }}>
-                      <span className="badge-text" style={{ color: '#7c3aed' }}>{filteredIncomplete.length}</span>
-                    </div>
-                  </div>
-                  {filteredIncomplete.map(item => (
-                    <TaskItem key={item.id} item={item} onToggle={toggle} onDelete={handleDelete} onUpdate={handleUpdate} onArchive={handleArchive} />
-                  ))}
-                </div>
-              )}
+              ) : (
+                <div className="task-list">
+                  {showActive && filteredIncomplete.length > 0 && (
+                    <>
+                      <div className="section-header">
+                        <span className="section-title">Active</span>
+                        <span className="section-count">{filteredIncomplete.length}</span>
+                      </div>
+                      {filteredIncomplete.map(item => (
+                        <TaskItem key={item.id} item={item} onToggle={(id, done) => toggle(id, done)} onDelete={(id) => remove(id)} onUpdate={(id, data) => update(id, data)} onArchive={(id) => archive(id)} />
+                      ))}
+                    </>
+                  )}
 
-              {filteredCompleted.length > 0 && (
-                <div>
-                  <div className="section-header">
-                    <span className="section-title">Done</span>
-                    <div className="badge" style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}>
-                      <span className="badge-text" style={{ color: '#22c55e' }}>{filteredCompleted.length}</span>
-                    </div>
-                  </div>
-                  {filteredCompleted.map(item => (
-                    <TaskItem key={item.id} item={item} onToggle={toggle} onDelete={handleDelete} onUpdate={handleUpdate} onArchive={handleArchive} />
-                  ))}
-                </div>
-              )}
+                  {showCompleted && filteredCompleted.length > 0 && (
+                    <>
+                      <div className="section-header" style={{ marginTop: showActive && filteredIncomplete.length > 0 ? 28 : 0 }}>
+                        <span className="section-title">Completed</span>
+                        <span className="section-count">{filteredCompleted.length}</span>
+                      </div>
+                      {filteredCompleted.map(item => (
+                        <TaskItem key={item.id} item={item} onToggle={(id, done) => toggle(id, done)} onDelete={(id) => remove(id)} onUpdate={(id, data) => update(id, data)} onArchive={(id) => archive(id)} />
+                      ))}
+                    </>
+                  )}
 
-              {filteredIncomplete.length === 0 && filteredCompleted.length === 0 && (
-                <div className="empty">
-                  <div className="empty-icon">✦</div>
-                  <span className="empty-text">{searchQuery ? 'No results found' : 'No tasks yet'}</span>
+                  {filteredIncomplete.length === 0 && filteredCompleted.length === 0 && (
+                    <div className="empty">
+                      <div className="empty-icon">~</div>
+                      <span className="empty-text">{searchQuery ? 'No results' : 'No tasks yet'}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </>
           )}
         </div>
-        )}
       </div>
     </div>
   );

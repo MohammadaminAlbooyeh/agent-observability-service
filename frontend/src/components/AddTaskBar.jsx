@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import './AddTaskBar.css';
 
 const PRIORITIES = [
-  { key: 'low', label: 'Low', color: '#22c55e' },
-  { key: 'medium', label: 'Med', color: '#f59e0b' },
-  { key: 'high', label: 'High', color: '#ef4444' },
+  { key: 'low', label: 'Low', color: '#00c758' },
+  { key: 'medium', label: 'Med', color: '#edb200' },
+  { key: 'high', label: 'High', color: '#fb2c36' },
 ];
 
 const CATEGORIES = ['Personal', 'Work', 'Shopping', 'Health', 'Finance'];
@@ -17,19 +17,19 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
   const [isFocused, setIsFocused] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const showErrorNotification = (message) => {
+  const showError = (message) => {
     setErrorMessage(message);
     setTimeout(() => setErrorMessage(null), 3000);
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!value || !value.trim()) {
-      showErrorNotification('Please enter a task name');
+      showError('Enter a task name');
       return;
     }
     if (!priority) {
-      showErrorNotification('Please select a priority (Low, Medium, or High)');
+      showError('Select a priority level');
       return;
     }
     const tagsStr = tags.trim() ? tags.split(',').map(t => t.trim()).filter(Boolean).join(',') : null;
@@ -41,99 +41,84 @@ export default function AddTaskBar({ value, onChange, onSubmit }) {
     setIsFocused(false);
   };
 
-  const handleFormKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      if (!value || !value.trim()) {
-        showErrorNotification('Please enter a task name');
-      } else if (!priority) {
-        showErrorNotification('Please select a priority (Low, Medium, or High)');
-      } else {
-        handleSubmit(e);
-      }
-    }
-  };
-
   return (
     <div className="add-task-wrap">
-      <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className={`input-row ${isFocused ? 'input-row-focused' : ''}`}>
+      <form onSubmit={handleSubmit} className={`input-row ${isFocused ? 'input-row-focused' : ''}`}>
         <input
           type="text"
           className="task-input"
-          placeholder="What needs to be done?"
+          placeholder="Add a new task..."
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              if (!value || !value.trim()) {
-                showErrorNotification('Please enter a task name');
-              } else if (!priority) {
-                showErrorNotification('Please select a priority (Low, Medium, or High)');
-              } else {
-                handleSubmit(e);
-              }
-            }
-          }}
+          onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           maxLength={200}
         />
-        <div className="priority-inline">
-          {PRIORITIES.map(p => (
-            <button
-              key={p.key}
-              type="button"
-              className={`pill ${priority === p.key ? 'pill-active' : 'pill-inactive'}`}
-              style={priority === p.key ? { backgroundColor: p.color, borderColor: p.color } : {}}
-              onClick={() => setPriority(p.key)}
-            >
-              <span className={`pill-text ${priority === p.key ? 'pill-text-active' : ''}`}>{p.label}</span>
-            </button>
-          ))}
-        </div>
-        <button type="submit" className={`add-btn ${!value || !value.trim() || !priority ? 'add-btn-disabled' : ''}`}>
-          +
+        {isFocused && (
+          <div className="priority-group">
+            {PRIORITIES.map(p => (
+              <button
+                key={p.key}
+                type="button"
+                className={`priority-pill ${priority === p.key ? 'priority-pill-active' : ''}`}
+                style={priority === p.key ? { borderColor: p.color, color: p.color } : {}}
+                onClick={() => setPriority(p.key)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          type="submit"
+          className="add-btn"
+          disabled={!value || !value.trim() || !priority}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
         </button>
       </form>
 
       {errorMessage && (
-        <div className="error-notification">
-          <span className="error-icon">⚠️</span>
-          <span className="error-message">{errorMessage}</span>
-        </div>
+        <div className="error-msg">{errorMessage}</div>
       )}
 
       {isFocused && (
         <div className="options">
-          <div className="option-section">
-            <label className="option-label">Due Date</label>
-            <input
-              type="date"
-              className="date-input"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+          <div className="options-row">
+            <div className="opt-group">
+              <label className="opt-label">Due</label>
+              <input
+                type="date"
+                className="opt-input"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </div>
+            <div className="opt-group">
+              <label className="opt-label">Tags</label>
+              <input
+                type="text"
+                className="opt-input"
+                placeholder="comma-sep"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="option-section">
-            <label className="option-label">Tags</label>
-            <input
-              type="text"
-              className="tag-input"
-              placeholder="comma-separated tags"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-            />
-          </div>
-          <div className="option-section">
-            <label className="option-label">Category</label>
-            <div className="pill-row">
+          <div className="opt-group">
+            <label className="opt-label">Category</label>
+            <div className="cat-group">
               {CATEGORIES.map(cat => (
                 <button
                   key={cat}
                   type="button"
-                  className={`pill ${category === cat ? 'pill-category-active' : 'pill-inactive'}`}
+                  className={`cat-pill ${category === cat ? 'cat-pill-active' : ''}`}
                   onClick={() => setCategory(cat)}
                 >
-                  <span className={`pill-text ${category === cat ? 'pill-text-active' : ''}`}>{cat}</span>
+                  {cat}
                 </button>
               ))}
             </div>
