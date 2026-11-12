@@ -21,8 +21,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 
 def configure_api_keys(settings_obj) -> None:
-    """Configure valid API keys from settings."""
-    settings.valid_api_keys = list(settings_obj.valid_api_keys)
+    """No-op: API keys are derived from settings.valid_api_keys_raw at load time."""
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:

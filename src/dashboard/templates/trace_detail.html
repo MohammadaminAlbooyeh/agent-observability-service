@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trace {{ trace.trace_id }}</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <header>
+        <h1>Trace Detail</h1>
+        <nav>
+            <a href="/dashboard">&larr; Back to Traces</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>{{ trace.trace_id }}</h2>
+            <p><strong>Name:</strong> {{ trace.name or '-' }}</p>
+            <p><strong>Created:</strong> {{ trace.created_at }}</p>
+            <p><strong>Spans:</strong> {{ trace.spans|length }}</p>
+        </section>
+        <section>
+            <h3>Span Tree</h3>
+            <ul>
+                {% for span in trace.spans %}
+                <li>
+                    <strong>{{ span.name }}</strong>
+                    ({{ span.span_id }})
+                    {% if span.parent_id %} parent: {{ span.parent_id }}{% endif %}
+                    {% if span.duration_ms %} - {{ span.duration_ms }}ms{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+</body>
+</html>

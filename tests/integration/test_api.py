@@ -172,8 +172,8 @@ class TestAlertsAPI:
 
 class TestIngestionAPI:
     async def test_ingest_trace_without_api_key(self, client):
-        # Ingestion requires an API key; without VALID_API_KEYS configured,
-        # the endpoint returns 503.
+        # Ingestion requires an API key; the test env has VALID_API_KEYS
+        # configured, so a request with no/invalid key is unauthorized (401).
         resp = await client.post(
             "/ingestion/trace",
             json={
@@ -185,4 +185,4 @@ class TestIngestionAPI:
                 "duration_ms": 1000.0,
             },
         )
-        assert resp.status_code == 503
+        assert resp.status_code == 401

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Observability Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <header>
+        <h1>Agent Observability</h1>
+        <nav>
+            <a href="/dashboard">Traces</a>
+            <a href="/metrics">Metrics</a>
+            <a href="/alerts">Alerts</a>
+        </nav>
+    </header>
+    <main>
+        <section>
+            <h2>Recent Traces</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Trace ID</th>
+                        <th>Name</th>
+                        <th>Spans</th>
+                        <th>Created At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trace in traces %}
+                    <tr>
+                        <td><a href="/dashboard/traces/{{ trace.trace_id }}">{{ trace.trace_id }}</a></td>
+                        <td>{{ trace.name or '-' }}</td>
+                        <td>{{ trace.span_count }}</td>
+                        <td>{{ trace.created_at }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>
