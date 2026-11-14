@@ -4,49 +4,6 @@ A FastAPI-based service for ingesting, storing, querying, and evaluating traces 
 
 ## System Architecture
 
-```
-                         +--------------------+
-                         |   Agent / SDK       |
-                         |   (sdk/tracer.py)   |
-                         +----------+----------+
-                                    | traces/spans (HTTP)
-                                    v
-                         +--------------------+
-                         |   FastAPI App       |
-                         |   (src/main.py)      |
-                         +----------+----------+
-                                    |
-              +---------------------+----------------------+
-              |                     |                       |
-              v                     v                       v
-   +-------------------+  +-------------------+   +---------------------+
-   |  Ingestion         |  |  API Routes       |   |  Dashboard           |
-   |  (src/ingestion)   |  |  (src/api)        |   |  (src/dashboard)     |
-   |  - trace_receiver   |  |  - routes          |   |  - views             |
-   |  - batch_ingest     |  |  - middleware      |   +---------------------+
-   |  - span_parser      |  |  - schemas         |
-   +---------+-----------+  +---------+---------+
-              |                        |
-              v                        v
-   +--------------------------------------------+
-   |              Services Layer                 |
-   |  (src/services)                              |
-   |  - trace_service     - metrics_service       |
-   |  - evaluation_service- comparison_service    |
-   |  - alert_service     - notification_service  |
-   +---------------------+------------------------+
-                         |
-            +------------+-------------+
-            v                          v
-   +-------------------+      +----------------------+
-   |  Evaluators         |      |  Database             |
-   |  (src/evaluators)   |      |  (src/database)       |
-   |  - judge_llm         |      |  SQLAlchemy models    |
-   |  - rule_based_checks |      |  + Alembic migrations |
-   |  - cost_calculator   |      +----------------------+
-   +---------------------+
-```
-
 ```mermaid
 flowchart TD
     SDK["Agent / SDK\n(sdk/tracer.py, sdk/client.py)"] -->|traces & spans over HTTP| API[FastAPI App\nsrc/main.py]
