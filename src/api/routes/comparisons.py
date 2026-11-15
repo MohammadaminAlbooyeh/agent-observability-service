@@ -1,26 +1,24 @@
-"""Compare two prompt/model versions side by side."""
+"""Compare two versions (the `version` key in span metadata) side by side."""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.routes.metrics import metric_filter
 from src.database.base import get_session
 from src.services.comparison_service import ComparisonService
-
+from src.services.metrics_service import MetricFilter
 
 router = APIRouter()
-
-
-def get_comparison_service(
-    session: AsyncSession = Depends(get_session),
-) -> ComparisonService:
-    return ComparisonService(session=session)
 
 
 @router.get("/{version_a}/{version_b}")
 async def compare_versions(
     version_a: str,
     version_b: str,
-    comparison_service: ComparisonService = Depends(get_comparison_service),
+    flt: MetricFilter = Depends(metric_filter),
+    session: AsyncSession = Depends(get_session),
 ):
-    """Diff metrics between two versions/tags."""
-    return await comparison_service.compare(version_a, version_b)
+    """Metrics for each version plus the diff (b - a)."""
+    return await ComparisonService(session).compare(
+        version_a, version_b, project_id=flt.project_id, since=flt.since
+    )

@@ -1,81 +1,93 @@
-"""Runs LLM-as-judge scoring on completed traces."""
+"""Scores traces with rule-based checks and (if configured) an LLM judge."""
 
-from typing import Any
+from typing import Any, Optional
 
-from src.database.base import AsyncSessionLocal
-from src.database.models.sqlalchemy_models import Evaluation, Trace
-from src.evaluators.judge_llm import JudgeLLM
-from src.evaluators.rule_based_checks import RuleBasedChecks
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.database.models.sqlalchemy_models import Evaluation, Trace
+from src.evaluators.judge_llm import JudgeLLM
+from src.evaluators.rule_based_checks import RuleBasedChecks
+
+
+class EvaluationRequest(BaseModel):
+    """Optional overrides; by default values are read from the trace's root-span metadata."""
+
+    output: Optional[str] = None
+    reference: Optional[str] = None
+    output_schema: Optional[dict[str, Any]] = Field(default=None, alias="schema")
+    min_len: Optional[int] = Field(default=None, ge=0)
+    max_len: Optional[int] = Field(default=None, ge=0)
+    keyword: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
+
 
 class EvaluationService:
-    """Service for evaluating traces with an LLM judge and rule-based checks."""
+    def __init__(self, session: AsyncSession, judge: JudgeLLM | None = None):
+        self.session = session
+        self.judge = judge or JudgeLLM()
 
-    def __init__(self, session: AsyncSession | None = None):
-        self._session = session
-
-    async def _get_session(self) -> AsyncSession:
-        if self._session is not None:
-            return self._session
-        return AsyncSessionLocal()
-
-    async def evaluate_trace(self, trace_id: str) -> dict[str, Any]:
-        """Score a completed trace using LLM judge and rule-based checks."""
-        session = await self._get_session()
-        result = await session.execute(
-            select(Trace).where(Trace.trace_id == trace_id)
-        )
-        trace = result.scalar_one_or_none()
-        if self._session is None:
-            await session.close()
+    async def evaluate_trace(
+        self,
+        trace_id: str,
+        request: EvaluationRequest | None = None,
+        project_id: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Score a trace and persist the evaluation. Returns None if the trace doesn't exist."""
+        stmt = select(Trace).where(Trace.trace_id == trace_id)
+        if project_id:
+            stmt = stmt.where(Trace.project_id == project_id)
+        trace = (await self.session.execute(stmt)).scalar_one_or_none()
         if trace is None:
-            return {"trace_id": trace_id, "score": 0.0, "rationale": "Trace not found"}
+            return None
 
-        checks = RuleBasedChecks()
-        metadata = trace.trace_metadata or {}
-        output = str(metadata.get("output", ""))
-        reference = metadata.get("reference")
+        req = request or EvaluationRequest()
+        meta = trace.trace_metadata or {}
+        output = req.output if req.output is not None else str(meta.get("output", ""))
+        reference = req.reference if req.reference is not None else meta.get("reference")
 
-        rule_result = checks.check_all(
+        rule_result = RuleBasedChecks().check_all(
             output,
-            schema=metadata.get("schema"),
-            min_len=metadata.get("min_len", 0),
-            keyword=metadata.get("keyword"),
+            schema=req.output_schema if req.output_schema is not None else meta.get("schema"),
+            min_len=req.min_len if req.min_len is not None else meta.get("min_len", 0),
+            max_len=req.max_len if req.max_len is not None else meta.get("max_len"),
+            keyword=req.keyword if req.keyword is not None else meta.get("keyword"),
         )
 
-        judge = JudgeLLM()
-        judge_result = await judge.score(output, reference)
+        if self.judge.configured:
+            judge_result = await self.judge.score(output, reference)
+            quality = (judge_result["accuracy"] + judge_result["relevance"]) / 2
+            score = 0.5 * float(rule_result["passed"]) + 0.5 * quality
+            judge_name = "rule_based+llm_judge"
+        else:
+            judge_result = None
+            score = float(rule_result["passed"])
+            judge_name = "rule_based"
 
-        score = 0.0
-        if rule_result["passed"]:
-            score += 0.5
-        score += 0.5 * judge_result.get("accuracy", 0.0)
+        failed = [k for k in ("schema", "length", "keyword") if not rule_result[k]]
+        parts = [f"failed rule checks: {', '.join(failed)}"] if failed else []
+        if judge_result and judge_result.get("rationale"):
+            parts.append(judge_result["rationale"])
+        rationale = "; ".join(parts) or "passed all checks"
 
-        rationale_parts = []
-        if not rule_result["passed"]:
-            rationale_parts.append("rule-based checks failed")
-        if judge_result.get("rationale"):
-            rationale_parts.append(judge_result["rationale"])
-        rationale = "; ".join(rationale_parts) if rationale_parts else "passed all checks"
-
-        eval_record = Evaluation(
+        evaluation = Evaluation(
             trace_id=trace.id,
-            judge="rule_based+llm_judge",
+            judge=judge_name,
             score=round(score, 4),
             rationale=rationale,
+            details={"rule_checks": rule_result, "judge": judge_result},
         )
-        session = await self._get_session()
-        session.add(eval_record)
-        await session.commit()
-        if self._session is None:
-            await session.close()
+        self.session.add(evaluation)
+        await self.session.commit()
 
         return {
+            "id": evaluation.id,
             "trace_id": trace_id,
-            "score": round(score, 4),
+            "judge": judge_name,
+            "score": evaluation.score,
             "rationale": rationale,
             "rule_checks": rule_result,
-            "judge": judge_result,
+            "llm_judge": judge_result,
         }

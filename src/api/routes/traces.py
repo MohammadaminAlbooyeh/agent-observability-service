@@ -1,37 +1,47 @@
-"""GET traces, GET single trace with full span tree."""
+"""List traces, get a trace with its span tree, and evaluate traces."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.base import get_session
+from src.services.evaluation_service import EvaluationRequest, EvaluationService
 from src.services.trace_service import TraceService
-
 
 router = APIRouter()
 
 
-def get_trace_service(
-    session: AsyncSession = Depends(get_session),
-) -> TraceService:
-    return TraceService(session=session)
-
-
 @router.get("/")
 async def list_traces(
-    limit: int = 50,
-    trace_service: TraceService = Depends(get_trace_service),
+    project_id: Optional[str] = None,
+    version: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
 ):
-    """List traces with optional pagination."""
-    return await trace_service.list_traces(limit=limit)
+    return await TraceService(session).list_traces(
+        limit=limit, offset=offset, project_id=project_id, version=version
+    )
 
 
 @router.get("/{trace_id}")
-async def get_trace(
-    trace_id: str,
-    trace_service: TraceService = Depends(get_trace_service),
-):
-    """Get a single trace with its full span tree."""
-    trace = await trace_service.get_trace_with_spans(trace_id)
-    if not trace:
-        raise HTTPException(status_code=404, detail="Trace not found")
+async def get_trace(trace_id: str, session: AsyncSession = Depends(get_session)):
+    """Get a trace with its spans (flat), nested span tree, and evaluations."""
+    trace = await TraceService(session).get_trace_with_spans(trace_id)
+    if trace is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Trace not found")
     return trace
+
+
+@router.post("/{trace_id}/evaluate", status_code=status.HTTP_201_CREATED)
+async def evaluate_trace(
+    trace_id: str,
+    request: Optional[EvaluationRequest] = Body(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Score a trace with rule-based checks and the LLM judge (if configured)."""
+    result = await EvaluationService(session).evaluate_trace(trace_id, request)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Trace not found")
+    return result

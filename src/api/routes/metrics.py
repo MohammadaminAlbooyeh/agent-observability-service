@@ -1,40 +1,55 @@
 """Aggregated latency/cost/error-rate endpoints."""
 
-from fastapi import APIRouter, Depends
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.schemas.metric import CostSummary, ErrorRate, LatencyPercentiles, MetricsSummary
 from src.database.base import get_session
-from src.services.metrics_service import MetricsService
-
+from src.services.metrics_service import MetricFilter, MetricsService
 
 router = APIRouter()
 
 
-def get_metrics_service(
-    session: AsyncSession = Depends(get_session),
-) -> MetricsService:
-    return MetricsService(session=session)
+def metric_filter(
+    project_id: Optional[str] = None,
+    window_minutes: Optional[int] = Query(
+        None, ge=1, description="Only traces created in the last N minutes"
+    ),
+) -> MetricFilter:
+    since = (
+        datetime.now(timezone.utc) - timedelta(minutes=window_minutes) if window_minutes else None
+    )
+    return MetricFilter(project_id=project_id, since=since)
 
 
-@router.get("/latency")
+@router.get("/summary", response_model=MetricsSummary)
+async def summary(
+    flt: MetricFilter = Depends(metric_filter), session: AsyncSession = Depends(get_session)
+):
+    return await MetricsService(session).snapshot(flt)
+
+
+@router.get("/latency", response_model=LatencyPercentiles)
 async def latency(
-    metrics_service: MetricsService = Depends(get_metrics_service),
+    flt: MetricFilter = Depends(metric_filter), session: AsyncSession = Depends(get_session)
 ):
-    """Return p50/p95 latency metrics."""
-    return await metrics_service.latency_percentiles()
+    """p50/p95/p99 end-to-end trace latency (root span duration)."""
+    return await MetricsService(session).latency_percentiles(flt)
 
 
-@router.get("/cost")
+@router.get("/cost", response_model=CostSummary)
 async def cost(
-    metrics_service: MetricsService = Depends(get_metrics_service),
+    flt: MetricFilter = Depends(metric_filter), session: AsyncSession = Depends(get_session)
 ):
-    """Return cost per trace aggregated metrics."""
-    return await metrics_service.cost_summary()
+    return await MetricsService(session).cost_summary(flt)
 
 
-@router.get("/error-rate")
+@router.get("/error-rate", response_model=ErrorRate)
 async def error_rate(
-    metrics_service: MetricsService = Depends(get_metrics_service),
+    flt: MetricFilter = Depends(metric_filter), session: AsyncSession = Depends(get_session)
 ):
-    """Return aggregated error rate."""
-    return await metrics_service.error_rate()
+    """Percentage of traces with at least one errored span."""
+    return await MetricsService(session).error_rate(flt)

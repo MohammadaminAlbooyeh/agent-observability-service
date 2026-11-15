@@ -1,88 +1,118 @@
-"""Computes p50/p95 latency, cost per trace, error rate."""
+"""Computes latency percentiles, cost, and error rate over traces.
 
-from typing import Any
+Latency is end-to-end trace latency: the duration of root spans (no parent).
+"""
 
-from sqlalchemy import select
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Optional
+
+from sqlalchemy import Select, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database.base import AsyncSessionLocal
 from src.database.models.sqlalchemy_models import Span, Trace
+
+METRIC_NAMES = (
+    "p50_ms",
+    "p95_ms",
+    "p99_ms",
+    "total_cost_usd",
+    "average_cost_per_trace_usd",
+    "error_rate",
+    "total_traces",
+    "error_traces",
+)
+
+
+@dataclass
+class MetricFilter:
+    project_id: Optional[str] = None
+    since: Optional[datetime] = None
+    version: Optional[str] = None
+
+    def apply(self, stmt: Select) -> Select:
+        if self.project_id:
+            stmt = stmt.where(Trace.project_id == self.project_id)
+        if self.since:
+            stmt = stmt.where(Trace.created_at >= self.since)
+        if self.version:
+            stmt = stmt.where(Trace.version == self.version)
+        return stmt
+
+
+def percentile(sorted_data: list[float], p: float) -> float:
+    if not sorted_data:
+        return 0.0
+    k = (len(sorted_data) - 1) * (p / 100.0)
+    f = int(k)
+    if f + 1 >= len(sorted_data):
+        return sorted_data[f]
+    return sorted_data[f] + (sorted_data[f + 1] - sorted_data[f]) * (k - f)
 
 
 class MetricsService:
-    """Service for computing aggregated metrics from stored traces/spans."""
+    """Aggregated metrics from stored traces/spans."""
 
-    def __init__(self, session: AsyncSession | None = None):
-        self._session = session
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
-    async def _get_session(self) -> AsyncSession:
-        if self._session is not None:
-            return self._session
-        return AsyncSessionLocal()
-
-    async def latency_percentiles(self) -> dict[str, Any]:
-        """Return p50/p95/p99 latency from completed spans."""
-        session = await self._get_session()
-        result = await session.execute(
-            select(Span.duration_ms).where(Span.duration_ms.is_not(None))
+    async def latency_percentiles(self, flt: MetricFilter | None = None) -> dict[str, float]:
+        flt = flt or MetricFilter()
+        stmt = flt.apply(
+            select(Span.duration_ms)
+            .join(Trace, Span.trace_id == Trace.id)
+            .where(Span.parent_id.is_(None), Span.duration_ms.is_not(None))
         )
-        durations = sorted([row[0] for row in result.all()])
-        if self._session is None:
-            await session.close()
-        if not durations:
-            return {"p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0}
-
-        def percentile(data: list[float], p: float) -> float:
-            if not data:
-                return 0.0
-            k = (len(data) - 1) * (p / 100.0)
-            f = int(k)
-            c = f + 1
-            if c >= len(data):
-                return data[f]
-            d0 = data[f] * (c - k)
-            d1 = data[c] * (k - f)
-            return d0 + d1
-
+        durations = sorted(row[0] for row in (await self.session.execute(stmt)).all())
         return {
             "p50_ms": round(percentile(durations, 50), 2),
             "p95_ms": round(percentile(durations, 95), 2),
             "p99_ms": round(percentile(durations, 99), 2),
         }
 
-    async def cost_summary(self) -> dict[str, Any]:
-        """Return cost summary aggregated from trace metadata."""
-        session = await self._get_session()
-        result = await session.execute(select(Trace.trace_metadata))
-        traces = result.scalars().all()
-        if self._session is None:
-            await session.close()
-        total_cost = 0.0
-        trace_count = len(traces)
-        for metadata in traces:
-            if isinstance(metadata, dict):
-                total_cost += float(metadata.get("cost_usd", 0.0))
-        avg_cost = total_cost / trace_count if trace_count else 0.0
+    async def _trace_count(self, flt: MetricFilter) -> int:
+        return (await self.session.execute(flt.apply(select(func.count(Trace.id))))).scalar_one()
+
+    async def cost_summary(self, flt: MetricFilter | None = None) -> dict[str, float]:
+        flt = flt or MetricFilter()
+        total = (
+            await self.session.execute(
+                flt.apply(
+                    select(func.coalesce(func.sum(Span.cost_usd), 0.0)).join(
+                        Trace, Span.trace_id == Trace.id
+                    )
+                )
+            )
+        ).scalar_one()
+        count = await self._trace_count(flt)
         return {
-            "total_cost_usd": round(total_cost, 4),
-            "average_cost_per_trace_usd": round(avg_cost, 4),
+            "total_cost_usd": round(float(total), 6),
+            "average_cost_per_trace_usd": round(float(total) / count, 6) if count else 0.0,
         }
 
-    async def error_rate(self) -> dict[str, Any]:
-        """Return aggregated error rate from trace metadata."""
-        session = await self._get_session()
-        result = await session.execute(select(Trace.trace_metadata))
-        traces = result.scalars().all()
-        if self._session is None:
-            await session.close()
-        total = len(traces)
-        errors = 0
-        for metadata in traces:
-            if isinstance(metadata, dict) and metadata.get("error"):
-                errors += 1
-        rate = (errors / total * 100.0) if total else 0.0
+    async def error_rate(self, flt: MetricFilter | None = None) -> dict[str, Any]:
+        flt = flt or MetricFilter()
+        errors = (
+            await self.session.execute(
+                flt.apply(
+                    select(func.count(distinct(Span.trace_id)))
+                    .join(Trace, Span.trace_id == Trace.id)
+                    .where(Span.error.is_(True))
+                )
+            )
+        ).scalar_one()
+        total = await self._trace_count(flt)
         return {
-            "error_rate": round(rate, 2),
+            "error_rate": round(errors / total * 100.0, 2) if total else 0.0,
             "total_traces": total,
             "error_traces": errors,
+        }
+
+    async def snapshot(self, flt: MetricFilter | None = None) -> dict[str, Any]:
+        """All metrics in one flat dict (keys in METRIC_NAMES)."""
+        flt = flt or MetricFilter()
+        return {
+            **(await self.latency_percentiles(flt)),
+            **(await self.cost_summary(flt)),
+            **(await self.error_rate(flt)),
         }

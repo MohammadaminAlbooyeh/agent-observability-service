@@ -5,11 +5,11 @@ from typing import Any
 
 import httpx
 
-from src.config import settings
+from src.config.settings import settings
 
 
 class JudgeLLM:
-    """LLM-as-judge evaluator that calls a configured LLM endpoint."""
+    """LLM-as-judge evaluator that calls an OpenAI-compatible /chat/completions endpoint."""
 
     def __init__(
         self,
@@ -17,13 +17,17 @@ class JudgeLLM:
         api_key: str | None = None,
         model: str | None = None,
     ):
-        self.base_url = base_url or getattr(settings, "llm_base_url", None)
-        self.api_key = api_key or getattr(settings, "llm_api_key", None)
-        self.model = model or getattr(settings, "llm_model", "gpt-4")
+        self.base_url = base_url or settings.llm_base_url
+        self.api_key = api_key or settings.llm_api_key
+        self.model = model or settings.llm_model
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
 
     async def score(self, output: str, reference: str | None = None) -> dict[str, Any]:
         """Score an LLM output for accuracy and relevance via an LLM judge."""
-        if not self.base_url or not self.api_key:
+        if not self.configured:
             return {
                 "accuracy": 0.0,
                 "relevance": 0.0,

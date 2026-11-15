@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Agent Observability{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <header>
+        <h1>Agent Observability</h1>
+        {% block nav %}
+        <nav>
+            <a href="/dashboard">Traces</a>
+            <a href="/docs">API docs</a>
+            <form method="post" action="/dashboard/logout"><button type="submit">Log out</button></form>
+        </nav>
+        {% endblock %}
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

@@ -1,130 +1,115 @@
-"""Integration tests for trace ingestion and retrieval."""
+"""Service-level tests for trace ingestion and retrieval."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import select
 
 from src.api.schemas.trace import SpanCreate
-from src.database.models.sqlalchemy_models import Trace
-from src.services.trace_service import TraceService
+from src.database.models.sqlalchemy_models import Project
+from src.services.trace_service import TraceOwnershipError, TraceService
+
+T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-@pytest.mark.asyncio
-async def test_create_span_creates_trace_and_span(db_session):
-    service = TraceService(session=db_session)
-
-    span = SpanCreate(
-        trace_id="trace-abc-123",
-        span_id="span-1",
-        parent_id=None,
-        name="llm_call",
-        start_time=_now_iso(),
-        end_time=_now_iso(),
-        duration_ms=150.5,
-        metadata={"model": "gpt-4"},
+def mk(trace_id, span_id, parent_id=None, offset_ms=0, **metadata):
+    start = T0 + timedelta(milliseconds=offset_ms)
+    return SpanCreate(
+        trace_id=trace_id,
+        span_id=span_id,
+        parent_id=parent_id,
+        name=span_id,
+        start_time=start,
+        end_time=start + timedelta(milliseconds=10),
+        metadata=metadata,
     )
-    result = await service.create_span(span)
 
-    assert result["trace_id"] == "trace-abc-123"
-    assert result["span_id"] == "span-1"
-    assert result["name"] == "llm_call"
-    assert result["duration_ms"] == 150.5
+
+async def _project(session, name="p") -> Project:
+    project = Project(name=name, api_key_hash=name * 8)
+    session.add(project)
+    await session.commit()
+    return project
+
+
+async def test_create_span_creates_trace(db_session):
+    result = await TraceService(db_session).create_span(mk("t", "root", model="gpt-4"))
+    assert result["trace_id"] == "t"
+    assert result["duration_ms"] == 10.0
     assert result["metadata"] == {"model": "gpt-4"}
 
-    # Verify persisted in DB
-    stmt = select(Trace).where(Trace.trace_id == "trace-abc-123")
-    trace_row = (await db_session.execute(stmt)).scalar_one()
-    assert trace_row.name == "llm_call"
+
+async def test_root_span_names_trace_even_if_late(db_session):
+    service = TraceService(db_session)
+    await service.create_span(mk("t", "child", parent_id="root"))
+    await service.create_span(mk("t", "root", output="final"))
+    trace = await service.get_trace_with_spans("t")
+    assert trace["name"] == "root"
+    assert trace["metadata"]["output"] == "final"
 
 
-@pytest.mark.asyncio
-async def test_create_span_reuses_existing_trace(db_session):
-    service = TraceService(session=db_session)
+async def test_duplicate_span_in_same_batch_is_ignored(db_session):
+    service = TraceService(db_session)
+    results = await service.ingest_spans([mk("t", "a"), mk("t", "a")])
+    assert results[0]["id"] == results[1]["id"]
+    assert len((await service.get_trace_with_spans("t"))["spans"]) == 1
 
-    span1 = SpanCreate(
-        trace_id="trace-reuse",
-        span_id="span-a",
-        parent_id=None,
-        name="root",
-        start_time=_now_iso(),
-        duration_ms=100.0,
+
+async def test_cost_from_tokens_and_explicit_cost(db_session):
+    service = TraceService(db_session)
+    await service.ingest_spans(
+        [
+            mk("t", "a", model="gpt-4", prompt_tokens=1000, completion_tokens=0),
+            mk("t", "b", cost_usd=0.25),
+            mk("t", "c", model="unknown", input_tokens=10, output_tokens=10),
+        ]
     )
-    await service.create_span(span1)
+    spans = {s["span_id"]: s for s in (await service.get_trace_with_spans("t"))["spans"]}
+    assert spans["a"]["cost_usd"] == 0.03
+    assert spans["b"]["cost_usd"] == 0.25
+    assert spans["c"]["cost_usd"] == 0.0
 
-    span2 = SpanCreate(
-        trace_id="trace-reuse",
-        span_id="span-b",
-        parent_id="span-a",
-        name="child",
-        start_time=_now_iso(),
-        duration_ms=50.0,
+
+async def test_error_detection(db_session):
+    service = TraceService(db_session)
+    await service.ingest_spans([mk("t", "a", status="ERROR"), mk("t", "b", error=False)])
+    spans = {s["span_id"]: s for s in (await service.get_trace_with_spans("t"))["spans"]}
+    assert spans["a"]["error"] is True
+    assert spans["b"]["error"] is False
+
+
+async def test_ownership_enforced_admin_unrestricted(db_session):
+    p1, p2 = await _project(db_session, "a"), await _project(db_session, "b")
+    service = TraceService(db_session)
+    await service.create_span(mk("t", "a"), project_id=p1.id)
+    with pytest.raises(TraceOwnershipError):
+        await service.create_span(mk("t", "b"), project_id=p2.id)
+    await service.create_span(mk("t", "c"), project_id=None)
+    assert len((await service.get_trace_with_spans("t"))["spans"]) == 2
+
+
+async def test_list_traces_filters_and_pagination(db_session):
+    p = await _project(db_session)
+    service = TraceService(db_session)
+    for i in range(5):
+        await service.create_span(mk(f"t{i}", "root", version="v2" if i % 2 else "v1"),
+                                  project_id=p.id if i < 3 else None)
+    assert len(await service.list_traces()) == 5
+    assert len(await service.list_traces(project_id=p.id)) == 3
+    assert {t["trace_id"] for t in await service.list_traces(version="v2")} == {"t1", "t3"}
+    page = await service.list_traces(limit=2, offset=4)
+    assert len(page) == 1
+
+
+async def test_spans_sorted_by_start_time_and_orphans_are_roots(db_session):
+    service = TraceService(db_session)
+    await service.ingest_spans(
+        [mk("t", "late", offset_ms=50), mk("t", "early", offset_ms=0),
+         mk("t", "orphan", parent_id="missing", offset_ms=10)]
     )
-    result = await service.create_span(span2)
-
-    assert result["trace_id"] == "trace-reuse"
-    assert result["parent_id"] == "span-a"
-
-
-@pytest.mark.asyncio
-async def test_list_traces(db_session):
-    service = TraceService(session=db_session)
-
-    for i in range(3):
-        await service.create_span(
-            SpanCreate(
-                trace_id=f"trace-list-{i}",
-                span_id=f"span-list-{i}",
-                parent_id=None,
-                name=f"span-{i}",
-                start_time=_now_iso(),
-                duration_ms=10.0 * i,
-            )
-        )
-
-    traces = await service.list_traces(limit=10)
-    assert len(traces) == 3
+    trace = await service.get_trace_with_spans("t")
+    assert [s["span_id"] for s in trace["spans"]] == ["early", "orphan", "late"]
+    assert {n["span_id"] for n in trace["tree"]} == {"early", "orphan", "late"}
 
 
-@pytest.mark.asyncio
-async def test_get_trace_with_spans(db_session):
-    service = TraceService(session=db_session)
-
-    await service.create_span(
-        SpanCreate(
-            trace_id="trace-tree",
-            span_id="span-root",
-            parent_id=None,
-            name="root",
-            start_time=_now_iso(),
-            duration_ms=100.0,
-        )
-    )
-    await service.create_span(
-        SpanCreate(
-            trace_id="trace-tree",
-            span_id="span-child",
-            parent_id="span-root",
-            name="child",
-            start_time=_now_iso(),
-            duration_ms=50.0,
-        )
-    )
-
-    trace = await service.get_trace_with_spans("trace-tree")
-    assert trace is not None
-    assert trace["trace_id"] == "trace-tree"
-    assert len(trace["spans"]) == 2
-    span_names = {s["name"] for s in trace["spans"]}
-    assert span_names == {"root", "child"}
-
-
-@pytest.mark.asyncio
-async def test_get_trace_with_spans_not_found(db_session):
-    service = TraceService(session=db_session)
-    result = await service.get_trace_with_spans("nonexistent")
-    assert result is None
+async def test_get_missing_trace(db_session):
+    assert await TraceService(db_session).get_trace_with_spans("nope") is None

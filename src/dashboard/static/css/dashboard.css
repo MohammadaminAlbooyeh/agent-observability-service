@@ -100,3 +100,29 @@ ul {
 li {
     margin-bottom: 0.5rem;
 }
+
+header form { display: inline; margin-left: 1.5rem; }
+header button { background: none; border: 1px solid #fff; color: #fff; padding: 0.25rem 0.75rem; border-radius: 4px; cursor: pointer; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; }
+.card { background: #f9fafb; border-radius: 6px; padding: 1rem; }
+.card .label { font-size: 0.75rem; color: #666; text-transform: uppercase; }
+.card .value { font-size: 1.5rem; font-weight: 600; }
+
+.filter { margin-bottom: 1rem; }
+.filter select, .filter button, .login input, .login button { padding: 0.4rem 0.6rem; font-size: 1rem; }
+
+.badge-error { color: #b91c1c; font-weight: 600; }
+.badge-ok { color: #15803d; }
+.muted { color: #888; font-size: 0.875rem; }
+.table-scroll { overflow-x: auto; }
+
+.tree, .tree ul { list-style: none; margin-left: 0; }
+.tree ul { margin-left: 1.5rem; border-left: 1px dashed #ccc; padding-left: 0.75rem; }
+.tree li { margin: 0.4rem 0; }
+.tree details summary { cursor: pointer; }
+.tree pre { background: #f3f4f6; padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; overflow-x: auto; }
+
+.login { max-width: 400px; margin: 4rem auto; }
+.login input { width: 100%; margin: 0.75rem 0; }
+.error { color: #b91c1c; margin-bottom: 0.5rem; }

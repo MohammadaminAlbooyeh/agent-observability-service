@@ -1,17 +1,18 @@
-"""Initialize the database schema by creating all SQLAlchemy tables."""
+"""Apply all database migrations (equivalent to `alembic upgrade head`)."""
 
-import asyncio
+from pathlib import Path
 
-from src.database.base import engine, Base
+from alembic import command
+from alembic.config import Config
 
 
-async def main() -> None:
-    """Create all database tables defined on the SQLAlchemy Base metadata."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    print("Database tables created successfully.")
-    await engine.dispose()
+def main() -> None:
+    root = Path(__file__).resolve().parent.parent
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "alembic"))
+    command.upgrade(cfg, "head")
+    print("Database migrated to head.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

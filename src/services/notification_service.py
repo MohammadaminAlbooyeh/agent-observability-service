@@ -1,38 +1,31 @@
-"""Sends alert notifications (email/webhook/Slack)."""
+"""Sends alert notifications to a webhook (Slack-compatible) or the log."""
 
+import logging
 from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 
 class NotificationService:
-    """Service for sending alert notifications via webhook/Slack/email."""
+    async def send(self, channel: str | None, message: str, payload: dict[str, Any]) -> bool:
+        """Deliver a notification. Returns True on success.
 
-    async def send(
-        self,
-        channel: str,
-        message: str,
-        payload: dict[str, Any] | None = None,
-    ) -> bool:
-        """Send a notification to the given channel.
-
-        Supports webhook URLs (http/https) and a ``slack`` pseudo-channel.
-        Returns True if the notification was dispatched successfully.
+        ``channel`` is ``None``/``"log"`` (log only) or an http(s) webhook URL. Webhooks receive
+        ``{"text": message, "payload": {...}}``, which Slack incoming webhooks accept.
         """
-        try:
-            if channel.startswith("http://") or channel.startswith("https://"):
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        channel,
-                        json={"text": message, "payload": payload or {}},
-                    )
-                return True
-
-            if channel == "slack":
-                # Slack webhook URLs are http/https, handled above.
-                return True
-
-            # Other channels (email, etc.) are not wired up; log and return True.
+        if not channel or channel == "log":
+            logger.warning("ALERT: %s | %s", message, payload)
             return True
-        except Exception:  # noqa: BLE001
+        if not channel.startswith(("http://", "https://")):
+            logger.error("Unsupported notification channel %r", channel)
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(channel, json={"text": message, "payload": payload})
+                resp.raise_for_status()
+            return True
+        except httpx.HTTPError as exc:
+            logger.error("Failed to deliver alert to webhook: %s", exc)
             return False

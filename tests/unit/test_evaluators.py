@@ -61,6 +61,11 @@ class TestRuleBasedChecks:
         schema = {"properties": {"age": {"type": "integer"}}}
         assert checks.check_schema(output, schema) is False
 
+    def test_check_schema_bool_is_not_integer(self):
+        checks = RuleBasedChecks()
+        schema = {"properties": {"n": {"type": "integer"}}}
+        assert checks.check_schema('{"n": true}', schema) is False
+
     def test_check_schema_invalid_json(self):
         checks = RuleBasedChecks()
         assert checks.check_schema("not json", {}) is False

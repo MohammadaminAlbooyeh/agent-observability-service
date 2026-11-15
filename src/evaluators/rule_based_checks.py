@@ -46,6 +46,8 @@ class RuleBasedChecks:
         python_type = type_map.get(expected_type)
         if python_type is None:
             return True
+        if isinstance(value, bool) and expected_type in ("integer", "number"):
+            return False
         return isinstance(value, python_type)
 
     def check_length(

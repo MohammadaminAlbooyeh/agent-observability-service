@@ -18,3 +18,7 @@ class ErrorRate(BaseModel):
     error_rate: float
     total_traces: int
     error_traces: int
+
+
+class MetricsSummary(LatencyPercentiles, CostSummary, ErrorRate):
+    pass

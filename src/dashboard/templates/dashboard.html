@@ -1,44 +1,49 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Observability Dashboard</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
-</head>
-<body>
-    <header>
-        <h1>Agent Observability</h1>
-        <nav>
-            <a href="/dashboard">Traces</a>
-            <a href="/metrics">Metrics</a>
-            <a href="/alerts">Alerts</a>
-        </nav>
-    </header>
-    <main>
-        <section>
-            <h2>Recent Traces</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Trace ID</th>
-                        <th>Name</th>
-                        <th>Spans</th>
-                        <th>Created At</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for trace in traces %}
-                    <tr>
-                        <td><a href="/dashboard/traces/{{ trace.trace_id }}">{{ trace.trace_id }}</a></td>
-                        <td>{{ trace.name or '-' }}</td>
-                        <td>{{ trace.span_count }}</td>
-                        <td>{{ trace.created_at }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </section>
-    </main>
-</body>
-</html>
+{% extends "base.html" %}
+{% block content %}
+<section>
+    <form class="filter" method="get" action="/dashboard">
+        <label for="project_id">Project</label>
+        <select id="project_id" name="project_id">
+            <option value="">All projects</option>
+            {% for p in projects %}
+            <option value="{{ p.id }}" {% if p.id == project_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Filter</button>
+    </form>
+    <div class="cards">
+        <div class="card"><div class="label">Traces</div><div class="value">{{ metrics.total_traces }}</div></div>
+        <div class="card"><div class="label">p50 latency</div><div class="value">{{ metrics.p50_ms }} ms</div></div>
+        <div class="card"><div class="label">p95 latency</div><div class="value">{{ metrics.p95_ms }} ms</div></div>
+        <div class="card"><div class="label">Error rate</div><div class="value">{{ metrics.error_rate }}%</div></div>
+        <div class="card"><div class="label">Total cost</div><div class="value">${{ "%.4f"|format(metrics.total_cost_usd) }}</div></div>
+    </div>
+</section>
+<section>
+    <h2>Recent traces</h2>
+    {% if traces %}
+    <div class="table-scroll">
+    <table>
+        <thead>
+            <tr><th>Trace ID</th><th>Name</th><th>Version</th><th>Spans</th><th>Status</th><th>Cost</th><th>Created</th></tr>
+        </thead>
+        <tbody>
+            {% for trace in traces %}
+            <tr>
+                <td><a href="/dashboard/traces/{{ trace.trace_id | urlencode }}">{{ trace.trace_id }}</a></td>
+                <td>{{ trace.name or '-' }}</td>
+                <td>{{ trace.version or '-' }}</td>
+                <td>{{ trace.span_count }}</td>
+                <td>{% if trace.error %}<span class="badge-error">error</span>{% else %}<span class="badge-ok">ok</span>{% endif %}</td>
+                <td>${{ "%.4f"|format(trace.cost_usd) }}</td>
+                <td class="muted">{{ trace.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted">No traces yet. Send spans to <code>POST /ingestion/batch</code> with a project API key.</p>
+    {% endif %}
+</section>
+{% endblock %}

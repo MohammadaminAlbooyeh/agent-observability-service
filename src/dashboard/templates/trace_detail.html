@@ -1,38 +1,53 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trace {{ trace.trace_id }}</title>
-    <link rel="stylesheet" href="/static/css/dashboard.css">
-</head>
-<body>
-    <header>
-        <h1>Trace Detail</h1>
-        <nav>
-            <a href="/dashboard">&larr; Back to Traces</a>
-        </nav>
-    </header>
-    <main>
-        <section>
-            <h2>{{ trace.trace_id }}</h2>
-            <p><strong>Name:</strong> {{ trace.name or '-' }}</p>
-            <p><strong>Created:</strong> {{ trace.created_at }}</p>
-            <p><strong>Spans:</strong> {{ trace.spans|length }}</p>
-        </section>
-        <section>
-            <h3>Span Tree</h3>
-            <ul>
-                {% for span in trace.spans %}
-                <li>
-                    <strong>{{ span.name }}</strong>
-                    ({{ span.span_id }})
-                    {% if span.parent_id %} parent: {{ span.parent_id }}{% endif %}
-                    {% if span.duration_ms %} - {{ span.duration_ms }}ms{% endif %}
-                </li>
-                {% endfor %}
-            </ul>
-        </section>
-    </main>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Trace {{ trace.trace_id }} · Agent Observability{% endblock %}
+
+{% macro render_spans(nodes) %}
+<ul>
+    {% for span in nodes %}
+    <li>
+        <details>
+            <summary>
+                <strong>{{ span.name }}</strong>
+                {% if span.duration_ms is not none %} · {{ "%.1f"|format(span.duration_ms) }} ms{% endif %}
+                {% if span.cost_usd %} · ${{ "%.4f"|format(span.cost_usd) }}{% endif %}
+                {% if span.error %} · <span class="badge-error">error</span>{% endif %}
+                <span class="muted">({{ span.span_id }})</span>
+            </summary>
+            <p class="muted">{{ span.start_time }} → {{ span.end_time or '…' }}</p>
+            {% if span.metadata %}<pre>{{ span.metadata | tojson(indent=2) }}</pre>{% endif %}
+        </details>
+        {% if span.children %}{{ render_spans(span.children) }}{% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% endmacro %}
+
+{% block content %}
+<section>
+    <p><a href="/dashboard">&larr; Back to traces</a></p>
+    <h2>{{ trace.name or trace.trace_id }}</h2>
+    <p><strong>Trace ID:</strong> {{ trace.trace_id }}</p>
+    <p><strong>Version:</strong> {{ trace.version or '-' }}</p>
+    <p><strong>Created:</strong> {{ trace.created_at }}</p>
+    <p><strong>Spans:</strong> {{ trace.spans|length }} ·
+       <strong>Cost:</strong> ${{ "%.4f"|format(trace.cost_usd) }} ·
+       <strong>Status:</strong> {% if trace.error %}<span class="badge-error">error</span>{% else %}<span class="badge-ok">ok</span>{% endif %}</p>
+</section>
+<section>
+    <h3>Span tree</h3>
+    <div class="tree">{{ render_spans(trace.tree) }}</div>
+</section>
+{% if trace.evaluations %}
+<section>
+    <h3>Evaluations</h3>
+    <table>
+        <thead><tr><th>Judge</th><th>Score</th><th>Rationale</th><th>When</th></tr></thead>
+        <tbody>
+        {% for e in trace.evaluations %}
+            <tr><td>{{ e.judge }}</td><td>{{ e.score }}</td><td>{{ e.rationale }}</td><td class="muted">{{ e.created_at }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+{% endblock %}

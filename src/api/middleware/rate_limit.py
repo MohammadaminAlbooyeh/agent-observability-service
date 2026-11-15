@@ -1,37 +1,50 @@
-"""Simple in-memory rate limiting middleware."""
+"""Sliding-window rate limiter keyed by client IP.
+
+State is in-process memory: with N workers/replicas the effective limit is N x calls.
+Use a shared store (e.g. Redis) or the reverse proxy for a global limit.
+"""
 
 import time
-from collections import defaultdict
-from typing import Callable
+from collections import deque
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import JSONResponse, Response
+
+EXEMPT_PATHS = {"/health"}
+MAX_TRACKED_CLIENTS = 10_000
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Token-bucket style rate limiter keyed by client IP."""
-
-    def __init__(self, app, calls: int = 60, period: float = 60.0):
+    def __init__(self, app, calls: int = 100, period: float = 60.0):
         super().__init__(app)
         self.calls = calls
         self.period = period
-        self._tokens: dict[str, list[float]] = defaultdict(list)
+        self._hits: dict[str, deque[float]] = {}
 
-    def _client_key(self, request: Request) -> str:
-        return request.client.host if request.client else "unknown"
+    def _prune(self, now: float) -> None:
+        stale = [k for k, q in self._hits.items() if not q or now - q[-1] >= self.period]
+        for key in stale:
+            del self._hits[key]
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        key = self._client_key(request)
-        now = time.time()
-        window = self._tokens[key]
-        # Remove timestamps outside the window
-        self._tokens[key] = [t for t in window if now - t < self.period]
-        if len(self._tokens[key]) >= self.calls:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.url.path in EXEMPT_PATHS:
+            return await call_next(request)
+
+        key = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        if len(self._hits) > MAX_TRACKED_CLIENTS:
+            self._prune(now)
+
+        hits = self._hits.setdefault(key, deque())
+        while hits and now - hits[0] >= self.period:
+            hits.popleft()
+        if len(hits) >= self.calls:
+            retry_after = max(int(self.period - (now - hits[0])) + 1, 1)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded"},
-                headers={"X-Request-ID": getattr(request.state, "request_id", "")},
+                headers={"Retry-After": str(retry_after)},
             )
-        self._tokens[key].append(now)
+        hits.append(now)
         return await call_next(request)

@@ -1,6 +1,6 @@
 """Thin client library for sending traces to the observability service."""
 
-from src.sdk.tracer import Tracer
-from src.sdk.client import ObservabilityClient
+from .client import ObservabilityClient
+from .tracer import Span, Tracer
 
-__all__ = ["Tracer", "ObservabilityClient"]
+__all__ = ["ObservabilityClient", "Span", "Tracer"]

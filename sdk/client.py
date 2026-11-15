@@ -1,94 +1,118 @@
-"""HTTP client that batches and POSTs spans to this service."""
+"""HTTP client that buffers spans and POSTs them to the observability service."""
 
+import atexit
+import logging
+import threading
 import time
-import uuid
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 import httpx
 
+logger = logging.getLogger("agent_observability")
+
+RETRY_STATUSES = {409, 429, 500, 502, 503, 504}
+
 
 class ObservabilityClient:
-    """Client that batches spans locally and POSTs them to the observability service."""
+    """Buffers spans and sends them to ``POST {base_url}/ingestion/batch``.
 
-    def __init__(self, base_url: str, api_key: str, batch_size: int = 10):
+    Thread-safe. Spans are flushed when ``batch_size`` is reached, on ``flush()``,
+    on ``close()`` / context-manager exit, and at interpreter exit. Delivery is
+    best-effort: failures are retried, then logged, and never raised into agent code.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        batch_size: int = 50,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        transport: Optional[httpx.BaseTransport] = None,
+    ):
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
         self.batch_size = batch_size
-        self._batch: list[dict[str, Any]] = []
-        self._client = httpx.AsyncClient(timeout=10.0)
+        self.max_retries = max_retries
+        self._buffer: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+        self._http = httpx.Client(
+            timeout=timeout,
+            headers={"X-API-Key": api_key, "User-Agent": "agent-observability-sdk"},
+            transport=transport,
+        )
+        self._closed = False
+        atexit.register(self.close)
 
     def send_span(
         self,
+        *,
+        trace_id: str,
+        span_id: str,
         name: str,
-        duration_ms: float,
-        metadata: dict | None = None,
-        trace_id: str | None = None,
-        span_id: str | None = None,
-        parent_id: str | None = None,
+        start_time: datetime,
+        end_time: Optional[datetime] = None,
+        parent_id: Optional[str] = None,
+        duration_ms: Optional[float] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Add a span to the local batch and flush if batch_size is reached."""
-        self._batch.append(
-            {
-                "trace_id": trace_id or str(uuid.uuid4()),
-                "span_id": span_id or str(uuid.uuid4()),
-                "parent_id": parent_id,
-                "name": name,
-                "start_time": time.time(),
-                "end_time": time.time() + (duration_ms / 1000.0),
-                "duration_ms": duration_ms,
-                "metadata": metadata or {},
-            }
-        )
-        if len(self._batch) >= self.batch_size:
-            self.flush_sync()
+        """Queue a span. ``start_time``/``end_time`` should be timezone-aware."""
+        span = {
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "parent_id": parent_id,
+            "name": name,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat() if end_time else None,
+            "duration_ms": duration_ms,
+            "metadata": metadata or {},
+        }
+        with self._lock:
+            self._buffer.append(span)
+            should_flush = len(self._buffer) >= self.batch_size
+        if should_flush:
+            self.flush()
 
-    def flush_sync(self) -> None:
-        """Synchronously POST the batched spans (best-effort)."""
-        if not self._batch:
+    def flush(self) -> bool:
+        """Send all buffered spans. Returns True if everything was delivered."""
+        with self._lock:
+            spans, self._buffer = self._buffer, []
+        ok = True
+        for i in range(0, len(spans), 1000):
+            ok = self._post(spans[i : i + 1000]) and ok
+        return ok
+
+    def _post(self, spans: list[dict[str, Any]]) -> bool:
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._http.post(f"{self.base_url}/ingestion/batch", json=spans)
+                if resp.status_code < 300:
+                    return True
+                if resp.status_code not in RETRY_STATUSES:
+                    logger.warning(
+                        "Dropping %d spans: HTTP %d %s", len(spans), resp.status_code, resp.text
+                    )
+                    return False
+                error = f"HTTP {resp.status_code}"
+            except httpx.HTTPError as exc:
+                error = str(exc)
+            if attempt < self.max_retries:
+                time.sleep(min(0.5 * 2**attempt, 5.0))
+        logger.warning("Dropping %d spans after %d retries: %s", len(spans), self.max_retries, error)
+        return False
+
+    def close(self) -> None:
+        if self._closed:
             return
-        spans = list(self._batch)
-        self._batch = []
+        self._closed = True
         try:
-            import asyncio
-
-            asyncio.run(self._post_batch(spans))
-        except Exception:  # noqa: BLE001
-            # Best-effort; never raise from the SDK.
-            pass
-
-    async def flush(self) -> None:
-        """Asynchronously POST the batched spans."""
-        if not self._batch:
-            return
-        spans = list(self._batch)
-        self._batch = []
-        await self._post_batch(spans)
-
-    async def _post_batch(self, spans: list[dict[str, Any]]) -> None:
-        """POST a batch of spans to the /traces/batch endpoint."""
-        try:
-            await self._client.post(
-                f"{self.base_url}/traces/batch",
-                json={"spans": spans},
-                headers={"X-API-Key": self.api_key, "Content-Type": "application/json"},
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-    async def aclose(self) -> None:
-        """Close the underlying HTTP client."""
-        await self._client.aclose()
+            self.flush()
+        finally:
+            self._http.close()
+            atexit.unregister(self.close)
 
     def __enter__(self) -> "ObservabilityClient":
         return self
 
-    def __exit__(self, *args) -> None:
-        try:
-            self.flush_sync()
-        finally:
-            try:
-                import asyncio
-
-                asyncio.run(self._client.aclose())
-            except Exception:  # noqa: BLE001
-                pass
+    def __exit__(self, *exc_info) -> None:
+        self.close()

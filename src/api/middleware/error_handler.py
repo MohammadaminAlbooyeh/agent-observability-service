@@ -1,20 +1,23 @@
-"""Global error handler middleware."""
+"""Global handler: log unexpected errors and return a generic 500 (no internals leaked)."""
+
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+logger = logging.getLogger(__name__)
 
-async def error_handler_middleware(request: Request, call_next):
-    """Catch unhandled exceptions and return a JSON error response."""
-    try:
-        return await call_next(request)
-    except Exception as exc:  # noqa: BLE001
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error", "error": str(exc)},
-        )
+
+async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", "")
+    logger.exception("Unhandled error on %s %s (request_id=%s)", request.method, request.url.path,
+                     request_id)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+        headers={"X-Request-ID": request_id},
+    )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Register the error handler middleware on the app."""
-    app.middleware("http")(error_handler_middleware)
+    app.add_exception_handler(Exception, _unhandled)

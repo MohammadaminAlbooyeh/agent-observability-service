@@ -3,7 +3,10 @@ __pycache__/
 *.db
 *.sqlite
 .env
+.env.*
+!.env.example
 .pytest_cache/
+.ruff_cache/
 .venv/
 venv/
 .idea/
